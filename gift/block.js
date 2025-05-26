@@ -1,4 +1,4 @@
-const { db, saveDB } = require('../lib/gifted');
+const { db, saveDB } = require('./gifted');
 
 module.exports = {
     command: 'block',
