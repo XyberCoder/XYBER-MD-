@@ -1,43 +1,30 @@
-// block.js
+const { db, saveDB } = require('../lib/gifted');
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+module.exports = {
+    command: 'block',
+    description: 'Block a user by replying to their message. Auto-unblocks in 24 hours.',
+    category: 'admin',
+    ownerOnly: true,
 
-module.exports = async function blockCmd(bot, msg, db, text) {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
+    async run(bot, msg) {
+        const reply = msg.reply_to_message;
+        if (!reply) return bot.sendMessage(msg.chat.id, "Please reply to the user's message to block them.");
 
-    // Command format: /block <userId>
-    const parts = text.split(' ');
-    if (parts.length < 2) {
-        return bot.sendMessage(chatId, 'Usage: /block <userId>');
-    }
+        const userId = reply.from.id;
 
-    const targetUserId = parts[1].trim();
+        if (db.blocked && db.blocked[String(userId)]) {
+            return bot.sendMessage(msg.chat.id, "User is already blocked.");
+        }
 
-    if (targetUserId === String(userId)) {
-        return bot.sendMessage(chatId, "You can't block yourself.");
-    }
+        if (!db.blocked) db.blocked = {};
+        db.blocked[String(userId)] = Date.now();
+        saveDB();
 
-    if (!db.blocked) {
-        // store blocked users as an object { userId: blockedAtTimestamp }
-        db.blocked = {};
-    }
-
-    // Clean up expired blocks before adding a new one
-    const now = Date.now();
-    for (const [blockedUser, blockedAt] of Object.entries(db.blocked)) {
-        if (now - blockedAt > MS_PER_DAY) {
-            delete db.blocked[blockedUser];
+        bot.sendMessage(msg.chat.id, `User ${reply.from.username || userId} has been blocked for 24 hours.`);
+        try {
+            await bot.sendMessage(userId, "You have been blocked from using this bot for 24 hours by an admin.");
+        } catch (err) {
+            console.error("Couldn't notify the blocked user:", err.message);
         }
     }
-
-    if (db.blocked[targetUserId]) {
-        return bot.sendMessage(chatId, `User ${targetUserId} is already blocked.`);
-    }
-
-    db.blocked[targetUserId] = now;
-
-    // Save db if needed here
-
-    return bot.sendMessage(chatId, `User ${targetUserId} has been blocked for 24 hours.`);
 };
