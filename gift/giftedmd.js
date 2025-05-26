@@ -1,124 +1,137 @@
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
+require('../set'); const fs = require('fs'); const axios = require('axios'); const fetch = require('node-fetch'); const chalk = require('chalk'); const path = require('path'); const os = require('os');
 
-// Simulated database
-const db = {
-    users: {},
-    groups: {}
-};
+function formatBytes(bytes) { const gb = bytes / (1024 ** 3); return gb.toFixed(2) + ' GB'; }
 
-const ownerId = ['123456789']; // Your Telegram User ID(s) here
+function formatUptime(seconds) { const d = Math.floor(seconds / (3600 * 24)); const h = Math.floor((seconds % (3600 * 24)) / 3600); const m = Math.floor((seconds % 3600) / 60); const s = Math.floor(seconds % 60); return ${d}d ${h}h ${m}m ${s}s; }
 
-async function giftedLoadDatabase(Gifted, m) {
-    const userId = m.from.id;
-    const chatId = m.chat.id;
-    const chatType = m.chat.type;
-    if (!db.users[userId]) {
-        db.users[userId] = {
-            username: m.from.username
-        };
-    }
-    if (chatType === 'group' || chatType === 'supergroup') {
-        if (!db.groups[chatId]) {
-            db.groups[chatId] = {
-                groupName: m.chat.title
-            };
-        }
-    }
+function getCurrentTime() { const now = new Date(); return now.toLocaleTimeString('en-KE', { hour12: true }); }
+
+function getCurrentDate() { const now = new Date(); return now.toLocaleDateString('en-GB'); }
+
+async function giftedLoadDatabase(Gifted, m) { const userId = m.from.id; const chatId = m.chat.id; const chatType = m.chat.type; if (!db.users[userId]) { db.users[userId] = { username: m.from.username }; } if (chatType === 'group' || chatType === 'supergroup') { if (!db.groups[chatId]) { db.groups[chatId] = { groupName: m.chat.title }; } } }
+
+async function giftedCustomMessage(Gifted, m) { const userId = m.from.id; const chatId = m.chat.id; const chatType = m.chat.type;
+
+if (m) {
+    m.isOwner = ownerId.includes(userId) || false;
+    m.isPrivate = (chatType !== 'group' && chatType !== 'supergroup' && chatType !== 'channel') || false;
+    m.isGroup = (chatType === 'group' || chatType === 'supergroup') || false;
 }
 
-async function giftedCustomMessage(Gifted, m) {
-    const userId = m.from.id;
-    const chatType = m.chat.type;
+const text = m.text || '';
 
-    m.isOwner = ownerId.includes(userId.toString());
-    m.isGroup = chatType === 'group' || chatType === 'supergroup';
-    m.isPrivate = !m.isGroup;
-
-    // Button Menu Pages
-    const menuPages = {
-        1: [
-            [{ text: '🧠 AI', feature: 'menu_ai' }, { text: '🖼 Anime', feature: 'menu_anime' }],
-            [{ text: '⬇️ Downloader', feature: 'menu_downloader' }, { text: '🛠 Tools', feature: 'menu_tools' }],
-            [{ text: '➡️ Next', feature: 'menu_page_2' }]
-        ],
-        2: [
-            [{ text: '🧩 General', feature: 'menu_general' }, { text: '🔞 NSFW', feature: 'menu_nsfw' }],
-            [{ text: '🔍 Search', feature: 'menu_search' }],
-            [{ text: '⬅️ Back', feature: 'menu_page_1' }]
-        ]
-    };
-
-    const buildMenuText = (m) => `
-╭══〘〘 *CYBER-MD* 〙〙═⊷
-┃❍ *User:* @${m.from.username || 'N/A'}
-┃❍ *User ID:* ${m.from.id}
-┃❍ *Owner:* ${m.isOwner ? '✅ Yes' : '❌ No'}
-┃❍ *Prefix:* /
-┃❍ *Version:* 2.0.0
-┃❍ *Time:* ${new Date().toLocaleTimeString()}
-┃❍ *Date:* ${new Date().toLocaleDateString()}
-╰═════════════════⊷
-
-*Select a category below:*`;
-
-    Gifted.reply = async (content, buttonsOrMsg, m) => {
-        let buttons = [];
-
-        if (Array.isArray(buttonsOrMsg)) {
-            buttons = buttonsOrMsg.map(row => row.map(btn => ({
-                text: btn.text,
-                callback_data: JSON.stringify({ feature: btn.feature || '', data: btn.data || '' })
-            })));
-        }
-
-        const options = {
-            reply_to_message_id: m.message_id || null,
-            parse_mode: 'Markdown',
-            reply_markup: buttons.length > 0 ? { inline_keyboard: buttons } : undefined
-        };
-
-        if (typeof content === 'string') {
-            return await Gifted.sendMessage(m.chat.id, content, options);
-        } else if (typeof content === 'object') {
-            if (content.text) return await Gifted.sendMessage(m.chat.id, content.text, options);
-        }
-    };
-
-    // Handle /menu command
-    if (m.text && m.text.toLowerCase() === '/menu') {
-        return Gifted.reply(buildMenuText(m), menuPages[1], m);
-    }
-
-    // Handle callback_query events
-    Gifted.on('callback_query', async (callback) => {
-        const msg = callback.message;
-        const data = JSON.parse(callback.data || '{}');
-        const feature = data.feature;
-
-        switch (feature) {
-            case 'menu_page_1':
-                return Gifted.reply(buildMenuText(callback), menuPages[1], msg);
-            case 'menu_page_2':
-                return Gifted.reply(buildMenuText(callback), menuPages[2], msg);
-
-            case 'menu_ai':
-                return Gifted.reply('*AI Commands:*\n✧ /flux\n✧ /gemini\n✧ /gpt\n✧ /luminai\n✧ /sd', [[{ text: '⬅️ Back', feature: 'menu_page_1' }]], msg);
-            case 'menu_anime':
-                return Gifted.reply('*Anime Commands:*\n✧ /konachan\n✧ /neko\n✧ /waifu', [[{ text: '⬅️ Back', feature: 'menu_page_1' }]], msg);
-            case 'menu_downloader':
-                return Gifted.reply('*Downloader:*\n✧ /apk\n✧ /gitclone\n✧ /play\n✧ /video\n✧ /ytmp3\n✧ /ytmp4', [[{ text: '⬅️ Back', feature: 'menu_page_1' }]], msg);
-            case 'menu_tools':
-                return Gifted.reply('*Tools:*\n✧ /createqr\n✧ /pastebin', [[{ text: '⬅️ Back', feature: 'menu_page_1' }]], msg);
-            case 'menu_general':
-                return Gifted.reply('*General:*\n✧ /help\n✧ /menu\n✧ /ping\n✧ /repo\n✧ /system\n✧ /uptime', [[{ text: '⬅️ Back', feature: 'menu_page_2' }]], msg);
-            case 'menu_nsfw':
-                return Gifted.reply('*NSFW:*\n✧ /hneko\n✧ /hwaifu', [[{ text: '⬅️ Back', feature: 'menu_page_2' }]], msg);
-            case 'menu_search':
-                return Gifted.reply('*Search:*\n✧ /wikipedia', [[{ text: '⬅️ Back', feature: 'menu_page_2' }]], msg);
-        }
+if (text === '/start') {
+    return await Gifted.sendMessage(m.chat.id, {
+        text: `Hey *${m.from.first_name || 'there'}*!\n\nWelcome to *CYBER-MD Bot*!\nUse /menu to view all commands.`,
+        reply_to_message_id: m.message_id
     });
 }
 
+if (text === '/menu') {
+    const uptime = formatUptime(process.uptime());
+    const timeNow = getCurrentTime();
+    const dateToday = getCurrentDate();
+    const usedMem = formatBytes(os.totalmem() - os.freemem());
+    const totalMem = formatBytes(os.totalmem());
+
+    return await Gifted.sendMessage(m.chat.id, {
+        text:
+
+`╭══〘〘 𝙲𝚈𝙱𝙴𝚁-𝙼𝙳 〙〙═⊷ ┃❍ Pʀᴇғɪx:   / ┃❍ ᴏᴡɴᴇʀ:  @𝙲yber𝙲oder ┃❍ Pʟᴜɢɪɴs:  25 ┃❍ Vᴇʀsɪᴏɴ:  2.0.0 ┃❍ Uᴘᴛɪᴍᴇ:  ${uptime} ┃❍ Tɪᴍᴇ Nᴏᴡ:  ${timeNow} ┃❍ Dᴀᴛᴇ Tᴏᴅᴀʏ:  ${dateToday} ┃❍ Tɪᴍᴇ Zᴏɴᴇ:  Africa/Nairobi ┃❍ Sᴇʀᴠᴇʀ Rᴀᴍ:  ${usedMem} / ${totalMem} ╰═════════════════⊷
+
+𝙲𝚈𝙱𝙴𝚁-𝙼𝙳 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂 𝙻𝙸𝚂𝚃:
+
+╭─── 『 𝙰𝙸 』 ✧ /flux ✧ /gemini ✧ /gpt ✧ /luminai ✧ /sd ╰─────────────────◊
+
+╭─── 『 𝙰𝙽𝙸𝙼𝙴 』 ✧ /konachan ✧ /neko ✧ /waifu ╰─────────────────◊
+
+╭─── 『 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝚁 』 ✧ /apk ✧ /gitclone ✧ /play ✧ /video ✧ /ytmp3 ✧ /ytmp4 ╰─────────────────◊
+
+╭─── 『 𝙶𝙴𝙽𝙴𝚁𝙰𝙻 』 ✧ /help ✧ /menu ✧ /ping ✧ /repo ✧ /system ✧ /uptime ╰─────────────────◊
+
+╭─── 『 𝙽𝚂𝙵𝚆 』 ✧ /hneko ✧ /hwaifu ╰─────────────────◊
+
+╭─── 『 𝚂𝙴𝙰𝚁𝙲𝙷 』 ✧ /wikipedia ╰─────────────────◊
+
+╭─── 『 𝚃𝙾𝙾𝙻𝚂 』 ✧ /createqr ✧ /pastebin ╰─────────────────◊` }, m); }
+
+Gifted.reply = async (content, buttonsOrMsg, m) => {
+    try {
+        let buttons = [];
+
+        if (typeof buttonsOrMsg === 'object') {
+            if (Array.isArray(buttonsOrMsg)) {
+                buttons = buttonsOrMsg.map(row => {
+                    if (Array.isArray(row)) {
+                        return row.map(button => {
+                            if (button.feature) {
+                                return { text: button.text, callback_data: JSON.stringify({ feature: button.feature, data: button.data || '' }) };
+                            } else if (button.callback_data) {
+                                return { text: button.text, callback_data: button.callback_data };
+                            } else if (button.url) {
+                                return { text: button.text, url: button.url };
+                            } else {
+                                return button;
+                            }
+                        });
+                    } else {
+                        if (row.feature) {
+                            return [{ text: row.text, callback_data: JSON.stringify({ feature: row.feature, data: row.data || '' }) }];
+                        } else if (row.callback_data) {
+                            return [{ text: row.text, callback_data: row.callback_data }];
+                        } else if (row.url) {
+                            return [{ text: row.text, url: row.url }];
+                        } else {
+                            return [row];
+                        }
+                    }
+                });
+            } else if (buttonsOrMsg.chat && buttonsOrMsg.message_id) {
+                m = buttonsOrMsg;
+            } else {
+                content = { ...content, ...buttonsOrMsg };
+            }
+        }
+
+        if (m.message_id) {
+            content.reply_to_message_id = m.message_id;
+        } else {
+            content.reply_to_message_id = null;
+        }
+
+        if (buttons.length > 0) {
+            content.reply_markup = { inline_keyboard: buttons };
+        }
+
+        if (typeof content === 'object') {
+            if (content.image) {
+                return await Gifted.sendPhoto(m.chat.id, content.image.url || content.image, content);
+            }
+            if (content.video) {
+                return await Gifted.sendVideo(m.chat.id, content.video.url || content.video, content);
+            }
+            if (content.audio) {
+                return await Gifted.sendAudio(m.chat.id, content.audio.url || content.audio, content);
+            }
+            if (content.document) {
+                return await Gifted.sendDocument(m.chat.id, content.document.url || content.document, content);
+            }
+            if (content.text) {
+                return await Gifted.sendMessage(m.chat.id, content.text, content);
+            }
+            throw new Error('Unsupported content type.');
+        }
+
+        throw new Error('Invalid content type.');
+    } catch (error) {
+        console.error('Gifted.reply error:', error.message);
+        await Gifted.sendMessage(m.chat.id, `Failed to send message: ${error.message}`, {});
+    }
+};
+
+// Gifted.downloadAndSend remains unchanged...
+
+}
+
 module.exports = { loadDatabase: giftedLoadDatabase, customMessage: giftedCustomMessage };
+
