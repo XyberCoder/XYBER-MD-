@@ -4,8 +4,8 @@ const axios = require('axios');
 const fetch = require('node-fetch');
 const chalk = require('chalk');
 const path = require('path');
-const adminCmd = require('./commands/admin');
-const blockCmd = require('./commands/block');
+const adminCmd = require('./admin');
+const blockCmd = require('./block');
 
 async function giftedLoadDatabase(Gifted, m) {
     const userId = m.from.id;
